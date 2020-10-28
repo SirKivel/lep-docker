@@ -1,11 +1,11 @@
-FROM ubuntu:bionic
+FROM ubuntu:latest
 
 # Maintainer
 LABEL maintainer="Angel Adames <a.adames@gbh.com.do>"
 
 # Environment
 ENV DEBIAN_FRONTEND noninteractive
-ENV PHP_VERSION 7.3
+ENV PHP_VERSION 7.1
 
 # Update package list and upgrade available packages
 RUN apt update &&\
