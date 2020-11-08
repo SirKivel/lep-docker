@@ -1,4 +1,4 @@
-FROM ubuntu:bionic
+FROM ubuntu:focal
 
 # Maintainer
 LABEL maintainer="Angel Adames <a.adames@gbh.com.do>"
@@ -40,6 +40,7 @@ RUN apt update && \
       software-properties-common \
       supervisor \
       vim \
+      wget \
       yarn
 
 # Configure locale and timezone
@@ -74,12 +75,12 @@ RUN apt install -y \
 
 # Update package alternatives
 RUN update-alternatives --set php /usr/bin/php${PHP_VERSION} && \
-  update-alternatives --set php-config /usr/bin/php-config${PHP_VERSION} && \
-  update-alternatives --set phpize /usr/bin/phpize${PHP_VERSION}
+    update-alternatives --set php-config /usr/bin/php-config${PHP_VERSION} && \
+    update-alternatives --set phpize /usr/bin/phpize${PHP_VERSION}
 
 # Install Composer package manager
-RUN curl -sS https://getcomposer.org/installer | php && \
-  mv composer.phar /usr/local/bin/composer
+RUN curl -sS https://getcomposer.org/installer | php -- \
+    --install-dir=/usr/local/bin --filename=composer
 
 # PHP CLI & FPM configuration
 RUN sed -i "s/error_reporting = .*/error_reporting = E_ALL/" /etc/php/${PHP_VERSION}/cli/php.ini && \
@@ -109,6 +110,24 @@ RUN printf "[openssl]\n" | tee -a /etc/php/${PHP_VERSION}/fpm/php.ini && \
     printf "[curl]\n" | tee -a /etc/php/${PHP_VERSION}/fpm/php.ini && \
     printf "curl.cainfo = /etc/ssl/certs/ca-certificates.crt\n" | tee -a /etc/php/${PHP_VERSION}/fpm/php.ini
 
+# Installing GEOS
+ENV GEOS_VERSION 3.6.1
+RUN curl -s -O http://download.osgeo.org/geos/geos-${GEOS_VERSION}.tar.bz2 && \
+    tar -xjvf geos-${GEOS_VERSION}.tar.bz2 && \
+    cd /geos-${GEOS_VERSION} && \
+    ./configure --enable-php && \
+    make && \
+    make install && \
+    ldconfig
+
+RUN wget https://git.osgeo.org/gogs/geos/php-geos/archive/master.tar.gz && \
+    tar -zxvf master.tar.gz && \
+    cd /php-geos && \
+    ./autogen.sh && \
+    ./configure && \
+    make && \
+    make install
+
 # Add nginx and supervisor services configuration
 COPY nginx/default /etc/nginx/sites-available
 COPY supervisord /etc/supervisor/conf.d
@@ -116,47 +135,15 @@ COPY supervisord /etc/supervisor/conf.d
 # Enable default nginx configuration
 RUN ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
-# Install GEOS
-WORKDIR /app
-
-RUN curl -s -O http://download.osgeo.org/geos/geos-3.6.1.tar.bz2
-RUN tar -xjvf geos-3.6.1.tar.bz2
-
-WORKDIR /app/geos-3.6.1
-RUN ./configure --enable-php
-RUN make
-RUN make install
-
-WORKDIR /app
-RUN ldconfig
-RUN apt update && apt install wget -y
-RUN wget https://git.osgeo.org/gogs/geos/php-geos/archive/master.tar.gz
-RUN ls
-RUN tar -zxvf master.tar.gz
-
-WORKDIR /app/php-geos
-RUN ./autogen.sh
-RUN ./configure
-RUN make
-RUN make install
-
-# Cleaning
-WORKDIR /app
-RUN rm * -r
+# Copy scripts
+RUN mkdir -p /scripts
+COPY scripts scripts
 
 # Clean up image
-RUN apt autoremove -y && \
-    apt clean -y
-
-# Add run.sh script
-COPY scripts/run.sh /run.sh
-RUN chmod 755 /run.sh && \
-    mkdir -p /run/php
-
-# Set working directory
 WORKDIR /app
+RUN apt autoremove -yq && apt clean -yq
 
 # Expose default HTTP port
 EXPOSE 80
 
-CMD ["/run.sh"]
+CMD ["/usr/bin/supervisord", "--nodaemon", "-c", "/etc/supervisor/supervisord.conf"]
