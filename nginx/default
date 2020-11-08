@@ -4,8 +4,8 @@ upstream php {
 }
 server {
     listen 80 default_server;
-    
-    root /app;
+
+    root /app/public;
 
     client_max_body_size 15M;
 
